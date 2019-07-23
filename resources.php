@@ -136,6 +136,43 @@ function signup(&$request, &$response, &$db) {
   $password = $request->param("password"); // The requested password from the client
   $email    = $request->param("email");    // The requested email address from the client
   
+  // maybe sanitize the input
+
+  // the db contraints will ensure thatthe username and email are unique
+
+  // create an entry in the db
+  //$username = mysqli_real_escape_string($username);
+  //$password = mysqli_real_escape_string($password);
+  //$email = mysqli_real_escape_string($email);
+  $now = new DateTime('NOW');
+  $time = $now->format(DateTime::ATOM);
+
+  $salt = random_bytes(16);
+  $pw_salt = $password.$salt;
+  // TODO: hash the pw || salt
+  // store the salt
+  $sql = "INSERT INTO user_login (username, salt, challenge, expires) VALUES ('$username', '$salt', 0, '$time')";
+  log_to_console("Executing: $sql.");
+  try {
+    $db->query($sql);
+    log_to_console("Records added successfully.");
+  } catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    log_to_console("ERROR: Could not execute query, has the db been initialized?");
+    return false;
+  }
+
+  $sql = "INSERT INTO user (username, passwd, email, valid, modified) VALUES ('$username', '$password', '$email', 1, '$time')";
+  log_to_console("Executing: $sql.");
+  try {
+    $db->query($sql);
+    log_to_console("Records added successfully.");
+  } catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    log_to_console("ERROR: Could not execute query, has the db been initialized?");
+    return false;
+  }
+
   // Respond with a message of success.
   $response->set_http_code(201); // Created
   $response->success("Account created.");
