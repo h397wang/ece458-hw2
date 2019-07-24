@@ -136,25 +136,21 @@ function signup(&$request, &$response, &$db) {
   $password = $request->param("password"); // The requested password from the client
   $email    = $request->param("email");    // The requested email address from the client
   
-  // maybe sanitize the input
+  // the db contraints will ensure that the username and email are unique
 
-  // the db contraints will ensure thatthe username and email are unique
-
-  // create an entry in the db
-  //$username = mysqli_real_escape_string($username);
-  //$password = mysqli_real_escape_string($password);
-  //$email = mysqli_real_escape_string($email);
   $now = new DateTime('NOW');
   $time = $now->format(DateTime::ATOM);
 
-  $salt = random_bytes(16);
-  $pw_salt = $password.$salt;
-  // TODO: hash the pw || salt
-  // store the salt
-  $sql = "INSERT INTO user_login (username, salt, challenge, expires) VALUES ('$username', '$salt', 0, '$time')";
-  log_to_console("Executing: $sql.");
+  $salt_bytes = random_bytes(16);
+  $salt_hexstr = bin2hex($salt_bytes);
+  // concatenate
+  $pw_salt = $password.$salt_bytes;
+  $hash_pw_salt_hexstr = hash("sha256", $pw_salt, false);
+  // store the salt for this user
+  $sql = "INSERT INTO user_login (username, salt, challenge, expires) VALUES ('$username', '$salt_hexstr', 0, '$time')";
   try {
-    $db->query($sql);
+    $sth = $db->prepare($sql);
+    $sth->execute();
     log_to_console("Records added successfully.");
   } catch (Exception $ex) {
     log_to_console($ex->getmessage());
@@ -162,11 +158,13 @@ function signup(&$request, &$response, &$db) {
     return false;
   }
 
-  $sql = "INSERT INTO user (username, passwd, email, valid, modified) VALUES ('$username', '$password', '$email', 1, '$time')";
+  // store hash of password || salt
+  $sql = "INSERT INTO user (username, passwd, email, valid, modified) VALUES ('$username', '$hash_pw_salt_hexstr', '$email', 1, '$time')";
   log_to_console("Executing: $sql.");
   try {
-    $db->query($sql);
-    log_to_console("Records added successfully.");
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    log_to_console("Query Success: $sql");
   } catch (Exception $ex) {
     log_to_console($ex->getmessage());
     log_to_console("ERROR: Could not execute query, has the db been initialized?");
@@ -191,11 +189,55 @@ function signup(&$request, &$response, &$db) {
 function identify(&$request, &$response, &$db) {
   $username = $request->param("username"); // The username
 
+  // Generate random challenge
+  $challenge_bytes = random_bytes(16);
+  $challenge_hexstr = bin2hex($challenge_bytes);
+  $salt_hexstr = "";
+  // Query user_login table for user's salt
+  try {
+    $sql = "SELECT salt from user_login WHERE username='$username'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $result = $sth->fetch();
+    if (!is_array($result)) {
+      log_to_console("Could not find user: $username");
+      goto fail;
+    }
+    $salt_hexstr = $result["salt"];
+    log_to_console("Query Success: $sql");
+  } catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    goto fail;
+  }
+
+  // Update the user_login table
+  $now = new DateTime('NOW');
+  $interval = new DateInterval("PT15M");
+  $expire = $now->add($interval)->format(DateTime::ATOM);
+  try {
+    $sql = "UPDATE user_login SET challenge='$challenge_hexstr', expires='$expire' WHERE username='$username'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    log_to_console("Query Success: $sql");
+  } catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    goto fail;
+  }
+
+  // Transmit salt and challenge
   $response->set_http_code(200);
   $response->success("Successfully identified user.");
-  log_to_console("Success.");
-
+  $response->set_data("challenge", $challenge_hexstr);
+  $response->set_data("salt", $salt_hexstr);
+  log_to_console("Successfully identified user, sending challenge and salt.");
+  log_to_console("Challenge $challenge_hexstr");
+  log_to_console("Salt $salt_hexstr");
   return true;
+
+fail:
+  $response->set_http_code(404);
+  $response->failure("Could not identify user.");
+  return false;
 }
 
 /**
@@ -207,10 +249,54 @@ function login(&$request, &$response, &$db) {
   $username = $request->param("username"); // The username with which to log in
   $password = $request->param("password"); // The password with which to log in
 
-  $response->set_http_code(200); // OK
-  $response->success("Successfully logged in.");
-  log_to_console("Session created.");
-  return true;
+  // Query user_login table for salt
+  try {
+    $sql = "SELECT challenge, salt FROM user_login WHERE username='$username'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $result = $sth->fetch();
+    $salt_hexstr = $result["salt"];
+    $challenge_hexstr = $result["challenge"];
+    log_to_console("Query Success: $sql");
+  } catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    // TODO: return failed response
+    return false;
+  }
+
+  // Query user for h(password || salt)
+  try {
+    $sql = "SELECT passwd FROM user WHERE username='$username'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $result = $sth->fetch();
+    $hash_pw_salt_hexstr = $result["passwd"];
+    log_to_console("Query Success: $sql");
+  } catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    // TODO: return failed response
+    return false;
+  } 
+
+  // compute h(h(password || salt) || challenge)
+  $answer_hexstr = hash("sha256", hex2bin($hash_pw_salt_hexstr.$challenge_hexstr), false);
+
+  // Compare to user's resp
+  log_to_console("Server computed: $answer_hexstr");
+  log_to_console("Received: $password");
+  if ($answer_hexstr == $password) {
+    log_to_console("Valid challenge response");
+    $response->set_http_code(200); // OK
+    $response->success("Successfully logged in.");
+    log_to_console("Session created.");
+    return true;
+  } else {
+    log_to_console("Invalid challenge response");
+    $response->set_http_code(401); // Unauthorized
+    $response->failure("Invalid password.");
+    log_to_console("Session created.");
+    return false;
+  }
 }
 
 

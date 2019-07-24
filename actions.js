@@ -96,12 +96,19 @@ async function credentials(username, password) {
   // bail if something went wrong
   if (!idResult.response.ok) {
     serverStatus(idResult);
+    console.log("Something went wrong.");
     return 0;
   }
 
   return idResult.json;
 }
 
+function concatenate(a1, a2) {
+  var a3 = new Uint8Array(a1.length + a2.length);
+  a3.set(a1);
+  a3.set(a2, a1.length);
+  return a3;
+}
 /**
  * Called when the user submits the log-in form.
  */
@@ -111,25 +118,59 @@ function login(userInput, passInput) {
       password = passInput.value;
       
   credentials(username, password).then(function(idJson) {
+    if (idJson == 0) {
+      return;
+    }
     // do any needed work with the credentials
-  
-    // Send a login request to the server.
-    serverRequest("login", // resource to call
-                  {"username":username, "password":password} // this should be populated with needed parameters
-    ).then(function(result) {
-      // If the login was successful, show the dashboard.
-      if (result.response.ok) {
-        // do any other work needed after successful login here
-      
-        showContent("dashboard");
+    console.log(idJson);
+    var challenge_hexstr = idJson.challenge;
+    var salt_hexstr = idJson.salt;
 
-      } else {
-        // If the login failed, show the login page with an error message.
-        serverStatus(result);
-      }
+    var salt_byte = hexStringToUint8Array(salt_hexstr);
+    var challenge_byte = hexStringToUint8Array(challenge_hexstr);
+    var password_byte = utf8ToUint8Array(password)
+    
+    var password_hexstr = bufferToHexString(password_byte);
+    var pw_salt_hexstr = password_hexstr.concat(salt_hexstr);
+    var pw_salt_byte = hexStringToUint8Array(pw_salt_hexstr);
+
+    console.log(salt_hexstr);
+    console.log(challenge_hexstr);
+    console.log(password_hexstr);
+    console.log(pw_salt_hexstr);
+
+    // compute challenge response
+    crypto.subtle.digest("SHA-256", pw_salt_byte).then(function(hash_pw_salt_byte) {
+      var hash_pw_salt_hexstr = bufferToHexString(hash_pw_salt_byte);
+      var resp_prehash_hexstr = hash_pw_salt_hexstr.concat(challenge_hexstr);
+      crypto.subtle.digest("SHA-256", hexStringToUint8Array(resp_prehash_hexstr)).then(function(resp_byte) {
+        var resp_hexstr = bufferToHexString(resp_byte);
+        // Send a login request to the server.
+        serverRequest("login", // resource to call
+                      {"username":username, "password":resp_hexstr} // this should be populated with needed parameters
+        ).then(function(result) {
+          // If the login was successful, show the dashboard.
+          if (result.response.ok) {
+            // do any other work needed after successful login here
+          
+            showContent("dashboard");
+
+          } else {
+            // If the login failed, show the login page with an error message.
+            serverStatus(result);
+          }
+        });
+      });
     });
-
   });
+}
+
+function validateEmail(mail) {
+  var reg = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/ 
+  if (reg.test(myForm.emailAddr.value)) {
+    return (true)
+  }
+  return (false)
 }
 
 /**
@@ -143,7 +184,14 @@ function signup(userInput, passInput, passInput2, emailInput) {
       email     = emailInput.value;
 
   // do any preprocessing on the user input here before sending to the server
-  
+  // I'm not sure if this is working
+  //if (validateEmail(email) === false) {
+  //  status("Invalid email");
+  //  return;
+  //}
+
+  // for now, transmit password in plaintext
+
   // send the signup form to the server
   serverRequest("signup",  // resource to call
                 {"username":username, "password":password, "email":email} // this should be populated with needed parameters
