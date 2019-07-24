@@ -289,14 +289,32 @@ function login(&$request, &$response, &$db) {
     $response->set_http_code(200); // OK
     $response->success("Successfully logged in.");
     log_to_console("Session created.");
+    // TODO: need to check if the session is live first...
+    /*
+    try {
+      $sessionId =  bin2hex(random_bytes(16));
+      $now = new DateTime('NOW');
+      $interval = new DateInterval("PT15M");
+      $expire = $now->add($interval)->format(DateTime::ATOM);
+      $sql = "INSERT INTO user_session (sessionid, username, expires) VALUES ('$sessionId', '$username', '$expires')";
+      $sth = $db->prepare($sql);
+      $sth->execute();
+      log_to_console("Query Success: $sql");
+    } catch (Exception $ex) {
+      log_to_console($ex->getmessage());
+      goto fail;
+    }
+    */
     return true;
   } else {
     log_to_console("Invalid challenge response");
-    $response->set_http_code(401); // Unauthorized
-    $response->failure("Invalid password.");
-    log_to_console("Session created.");
-    return false;
   }
+
+fail:
+  $response->set_http_code(401); // Unauthorized
+  $response->failure("Invalid password.");
+  return false;
+
 }
 
 
@@ -327,11 +345,27 @@ function save(&$request, &$response, &$db) {
   $siteuser   = $request->param("siteuser");
   $sitepasswd = $request->param("sitepasswd");
 
+  $siteiv = "";
+  $now = new DateTime('NOW');
+  $modified = $now->format(DateTime::ATOM);
+  try {
+    $sql = "INSERT INTO user_safe (username, site, siteuser, sitepasswd, siteiv, modified) VALUES ('$username', '$site', '$siteuser', '$sitepasswd', '$siteiv', '$modified')";
+      $sth = $db->prepare($sql);
+      $sth->execute();
+      log_to_console("Query Success: $sql");
+  } catch (Exception $ex) {
+      log_to_console($ex->getmessage());
+      goto fail;
+  }
   $response->set_http_code(200); // OK
   $response->success("Save to safe succeeded.");
   log_to_console("Successfully saved site data");
-
   return true;
+fail:
+  $response->set_http_code(401);
+  $response->failure("Save to safe failed.");
+  log_to_console("Save to safe failed");
+  return false;
 }
 
 /**
@@ -341,14 +375,38 @@ function save(&$request, &$response, &$db) {
  */
 function load(&$request, &$response, &$db) {
   $site = $request->param("site");
-
+  $username = $request->param("username");
+  try {
+    $sql = "SELECT siteuser, sitepasswd, FROM user_safe WHERE username='$username' and site='$site'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $result = $sth->fetch();
+    if (!is_array($result)) {
+      log_to_console("Could not find sitepasswd for $username, $site");
+      goto no_site;
+    }
+    $sitepasswd = $result["sitepasswd"];
+    $siteuser = $result["siteuser"];
+    log_to_console("Query Success: $sql");
+  } catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    goto fail;
+  }
+  
   $response->set_data("site", $site);
-
+  $response->set_data("siteuser", $siteuser);
+  $response->set_data("sitepasswd", $sitepasswd);
   $response->set_http_code(200); // OK
   $response->success("Site data retrieved.");
-  log_to_console("Successfully retrieved site data");
-
+  log_to_console("Site data retrieved.");
   return true;
+
+fail:
+no_site:
+  $response->set_http_code(404);
+  $response->success("Site data could not be retrieved.");
+  log_to_console("Site data could not be retrieved.");
+  return false;
 }
 
 /**

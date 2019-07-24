@@ -83,6 +83,7 @@
  *
  *****************************************************************************/
 
+var gPassword = "";
 
 /**
  * This is an async function that should return the username and password to send
@@ -183,6 +184,9 @@ function signup(userInput, passInput, passInput2, emailInput) {
       password2 = passInput2.value,
       email     = emailInput.value;
 
+  gPassword = password;
+  // TODO: check that both passwords match?
+
   // do any preprocessing on the user input here before sending to the server
   // I'm not sure if this is working
   //if (validateEmail(email) === false) {
@@ -218,9 +222,9 @@ function save(siteInput, userInput, passInput) {
       sitepasswd = passInput.value,
       encrypted; // this will need to be populated
   
+  encrypted = sitepasswd;
   // send the data, along with the encrypted password, to the server
-  serverRequest("save",  // the resource to call
-                {"site":site, "siteuser":siteuser, "sitepasswd":encrypted} // this should be populated with any parameters the server needs
+  serverRequest("save", {"site":site, "siteuser":siteuser, "sitepasswd":encrypted}
   ).then(function(result) {
     if (result.response.ok) {
       // any work after a successful save should be done here
@@ -244,7 +248,7 @@ function loadSite(siteName, siteElement, userElement, passElement) {
   // do any preprocessing here
 
   serverRequest("load", // the resource to call
-                {"site":siteName} // populate with any parameters the server needs
+                {"site":siteName, "username":username}
   ).then(function(result) {
     if (result.response.ok) {
       // do any work that needs to be done on success
