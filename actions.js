@@ -83,7 +83,6 @@
  *
  *****************************************************************************/
 
-var gPassword = "";
 
 /**
  * This is an async function that should return the username and password to send
@@ -152,10 +151,7 @@ function login(userInput, passInput) {
         ).then(function(result) {
           // If the login was successful, show the dashboard.
           if (result.response.ok) {
-            // do any other work needed after successful login here
-          
             showContent("dashboard");
-
           } else {
             // If the login failed, show the login page with an error message.
             serverStatus(result);
@@ -184,7 +180,7 @@ function signup(userInput, passInput, passInput2, emailInput) {
       password2 = passInput2.value,
       email     = emailInput.value;
 
-  gPassword = password;
+  //gPassword = password;
   // TODO: check that both passwords match?
 
   // do any preprocessing on the user input here before sending to the server
@@ -252,7 +248,7 @@ function loadSite(siteName, siteElement, userElement, passElement) {
   ).then(function(result) {
     if (result.response.ok) {
       // do any work that needs to be done on success
-
+      console.log(result);
     } else {
       // on failure, show the login page and display any server status
       showContent("login");

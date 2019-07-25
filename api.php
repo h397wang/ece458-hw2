@@ -202,7 +202,7 @@ class Response {
    * expiry to "session" meaning the cookie will be deleted once the user closes their
    * browser.  To set an explicit expiry use a Unix timestamp.
    */
-  function add_cookie($name, $value, $expires = 0) {
+  function set_cookie($name, $value, $expires = 0) {
     $this->cookies[] = ["name" => $name, "value" => $value, "expires" => $expires];
   }
   

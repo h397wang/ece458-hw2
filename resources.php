@@ -288,23 +288,33 @@ function login(&$request, &$response, &$db) {
     log_to_console("Valid challenge response");
     $response->set_http_code(200); // OK
     $response->success("Successfully logged in.");
-    log_to_console("Session created.");
-    // TODO: need to check if the session is live first...
-    /*
+    // determine sessionid
     try {
-      $sessionId =  bin2hex(random_bytes(16));
-      $now = new DateTime('NOW');
-      $interval = new DateInterval("PT15M");
-      $expire = $now->add($interval)->format(DateTime::ATOM);
-      $sql = "INSERT INTO user_session (sessionid, username, expires) VALUES ('$sessionId', '$username', '$expires')";
+      $sql = "SELECT sessionid FROM user_session WHERE username='$username'";
       $sth = $db->prepare($sql);
       $sth->execute();
-      log_to_console("Query Success: $sql");
+      $result = $sth->fetch();
+      $sessionid =  bin2hex(random_bytes(8));
+      $now = new DateTime('NOW');
+      $interval = new DateInterval("PT2M");
+      $expire = $now->add($interval)->format(DateTime::ATOM);
+      if (!is_array($result)) { // No sessionid for this user
+        $sql = "INSERT INTO user_session (sessionid, username, expires) VALUES ('$sessionid', '$username', '$expires')";
+        $sth = $db->prepare($sql);
+        $sth->execute();
+        log_to_console("Query Success: $sql");
+      } else { // sessionid exists for this user..? so refresh or what?
+        $sql = "UPDATE user_session SET sessionid='$sessionid', expires='$expire' WHERE username='$username'";
+        $sth = $db->prepare($sql);
+        $sth->execute();
+        log_to_console("Query Success: $sql");
+      }
     } catch (Exception $ex) {
       log_to_console($ex->getmessage());
       goto fail;
     }
-    */
+    $response->set_cookie("sessionid", $sessionid);
+    log_to_console("Session created: $sessionid");
     return true;
   } else {
     log_to_console("Invalid challenge response");
@@ -326,13 +336,50 @@ fail:
 function sites(&$request, &$response, &$db) {
   $sites = array();
 
-  $response->set_data("sites", $sites); // return the sites array to the client
+  // apparently the request is empty
+  $sessionid = $request->cookie("sessionid");
+  log_to_console("Retrieved sessionid from cookie: $sessionid");
+  try {
+    $sql = "SELECT username, expires FROM user_session WHERE sessionid='$sessionid'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $result = $sth->fetch();
+    log_to_console("Query Success: $sql");
+    if (!is_array($result)) {
+      goto fail;
+    }
+    $expires = $result["expires"];
+    $now = new DateTime('NOW');
+    $now = $now->format(DateTime::ATOM);
+    if ($expires < $now) {
+      goto fail;
+    }
+
+    // Query sites saved by this user
+    $sql = "SELECT site FROM user_safe WHERE username='$username'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $results = $sth->fetchAll(PDO::FETCH_COLUMN, 0);
+    log_to_console("Query Success: $sql");
+    if (!is_array($result)) {
+      goto fail;
+    }
+
+  } catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    goto fail;
+  }
+
+  $response->set_data("sites", $results); // return the sites array to the client
   $response->set_http_code(200);
   $response->success("Sites with recorded passwords.");
-  log_to_console("Found and returned sites");
+  log_to_console("Found and returned sites.");
 
   return true;
-      
+fail:
+  $response->set_http_code(401);
+  $response->failure("Session is invalid.");
+  return false;
 }
 
 /**
