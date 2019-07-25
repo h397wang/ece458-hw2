@@ -144,7 +144,7 @@ function signup(&$request, &$response, &$db) {
   $salt_bytes = random_bytes(16);
   $salt_hexstr = bin2hex($salt_bytes);
   // concatenate
-  $pw_salt = $password.$salt_bytes;
+  $pw_salt = (hex2bin($password)).$salt_bytes;
   $hash_pw_salt_hexstr = hash("sha256", $pw_salt, false);
   // store the salt for this user
   $sql = "INSERT INTO user_login (username, salt, challenge, expires) VALUES ('$username', '$salt_hexstr', 0, '$time')";
@@ -313,6 +313,8 @@ function login(&$request, &$response, &$db) {
       log_to_console($ex->getmessage());
       goto fail;
     }
+    // TODO: session_start();
+    // $_SESSION["favcolor"] = "green";
     $response->set_cookie("sessionid", $sessionid);
     log_to_console("Session created: $sessionid");
     return true;
@@ -348,6 +350,7 @@ function sites(&$request, &$response, &$db) {
     if (!is_array($result)) {
       goto fail;
     }
+    $username = $result["username"];
     $expires = $result["expires"];
     $now = new DateTime('NOW');
     $now = $now->format(DateTime::ATOM);

@@ -83,6 +83,7 @@
  *
  *****************************************************************************/
 
+var gMasterPassword;
 
 /**
  * This is an async function that should return the username and password to send
@@ -109,6 +110,17 @@ function concatenate(a1, a2) {
   a3.set(a2, a1.length);
   return a3;
 }
+
+// Returns in hex
+/*
+function hashPassword(password) {
+  crypto.subtle.digest("SHA-256", utf8ToUint8Array(password)).then(function(hash_password_byte) {
+    var password_hexstr = bufferToHexString(hash_password_byte);
+    return password_hexstr;
+  });
+}
+*/
+
 /**
  * Called when the user submits the log-in form.
  */
@@ -116,7 +128,9 @@ function login(userInput, passInput) {
   // get the form fields
   var username = userInput.value,
       password = passInput.value;
-      
+  
+  gMasterPassword = password;
+
   credentials(username, password).then(function(idJson) {
     if (idJson == 0) {
       return;
@@ -129,33 +143,36 @@ function login(userInput, passInput) {
     var salt_byte = hexStringToUint8Array(salt_hexstr);
     var challenge_byte = hexStringToUint8Array(challenge_hexstr);
     var password_byte = utf8ToUint8Array(password)
-    
-    var password_hexstr = bufferToHexString(password_byte);
-    var pw_salt_hexstr = password_hexstr.concat(salt_hexstr);
-    var pw_salt_byte = hexStringToUint8Array(pw_salt_hexstr);
 
-    console.log(salt_hexstr);
-    console.log(challenge_hexstr);
-    console.log(password_hexstr);
-    console.log(pw_salt_hexstr);
+    // hash password, don't send to server in plaintext
+    crypto.subtle.digest("SHA-256", utf8ToUint8Array(password)).then(function(hash_password_byte) {
+      var password_hexstr = bufferToHexString(hash_password_byte);
+      var pw_salt_hexstr = password_hexstr.concat(salt_hexstr);
+      var pw_salt_byte = hexStringToUint8Array(pw_salt_hexstr);
 
-    // compute challenge response
-    crypto.subtle.digest("SHA-256", pw_salt_byte).then(function(hash_pw_salt_byte) {
-      var hash_pw_salt_hexstr = bufferToHexString(hash_pw_salt_byte);
-      var resp_prehash_hexstr = hash_pw_salt_hexstr.concat(challenge_hexstr);
-      crypto.subtle.digest("SHA-256", hexStringToUint8Array(resp_prehash_hexstr)).then(function(resp_byte) {
-        var resp_hexstr = bufferToHexString(resp_byte);
-        // Send a login request to the server.
-        serverRequest("login", // resource to call
-                      {"username":username, "password":resp_hexstr} // this should be populated with needed parameters
-        ).then(function(result) {
-          // If the login was successful, show the dashboard.
-          if (result.response.ok) {
-            showContent("dashboard");
-          } else {
-            // If the login failed, show the login page with an error message.
-            serverStatus(result);
-          }
+      console.log(salt_hexstr);
+      console.log(challenge_hexstr);
+      console.log(password_hexstr);
+      console.log(pw_salt_hexstr);
+
+      // compute challenge response
+      crypto.subtle.digest("SHA-256", pw_salt_byte).then(function(hash_pw_salt_byte) {
+        var hash_pw_salt_hexstr = bufferToHexString(hash_pw_salt_byte);
+        var resp_prehash_hexstr = hash_pw_salt_hexstr.concat(challenge_hexstr);
+        crypto.subtle.digest("SHA-256", hexStringToUint8Array(resp_prehash_hexstr)).then(function(resp_byte) {
+          var resp_hexstr = bufferToHexString(resp_byte);
+          // Send a login request to the server.
+          serverRequest("login", // resource to call
+                        {"username":username, "password":resp_hexstr} // this should be populated with needed parameters
+          ).then(function(result) {
+            // If the login was successful, show the dashboard.
+            if (result.response.ok) {
+              showContent("dashboard");
+            } else {
+              // If the login failed, show the login page with an error message.
+              serverStatus(result);
+            }
+          });
         });
       });
     });
@@ -180,8 +197,10 @@ function signup(userInput, passInput, passInput2, emailInput) {
       password2 = passInput2.value,
       email     = emailInput.value;
 
-  //gPassword = password;
   // TODO: check that both passwords match?
+  if (password !== password2) {
+    return false;
+  }
 
   // do any preprocessing on the user input here before sending to the server
   // I'm not sure if this is working
@@ -190,21 +209,23 @@ function signup(userInput, passInput, passInput2, emailInput) {
   //  return;
   //}
 
-  // for now, transmit password in plaintext
+  crypto.subtle.digest("SHA-256", utf8ToUint8Array(password)).then(function(hash_password_byte) {
+    var hash_password_hexstr = bufferToHexString(hash_password_byte);
 
-  // send the signup form to the server
-  serverRequest("signup",  // resource to call
-                {"username":username, "password":password, "email":email} // this should be populated with needed parameters
-  ).then(function(result) {
-    // if everything was good
-    if (result.response.ok) {
-      // do any work needed if the signup request succeeded
+    // send the signup form to the server
+    serverRequest("signup",  // resource to call
+                  {"username":username, "password":hash_password_hexstr, "email":email}
+    ).then(function(result) {
+      // if everything was good
+      if (result.response.ok) {
+        // do any work needed if the signup request succeeded
 
-      // go to the login page
-      showContent("login");
-    }
-    // show the status message from the server
-    serverStatus(result);
+        // go to the login page
+        showContent("login");
+      }
+      // show the status message from the server
+      serverStatus(result);
+    });
   });
 }
 
