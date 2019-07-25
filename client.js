@@ -252,6 +252,7 @@ function sites(page) {
   serverRequest("sites", {}).then(function (result) {
     if (result.response.ok) {
       let sites = result.json.sites;
+      console.log(sites);
       // delete all but the first option
       let options = select.querySelectorAll("option");
       for (let i = 1; i < options.length; i++) {
@@ -301,6 +302,6 @@ function loadSiteWrapper(event) {
   }
   
   // otherwise, call the student code mostly the same way form submit code is called
-  loadSite.call(form, siteName, siteElement, userElement, passElement);
+  loadSite.call(form, site, siteElement, userElement, passElement);
 }
 
