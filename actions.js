@@ -86,6 +86,8 @@
 var gMasterPassword;
 var gKey;
 var gUsername;
+var gSiteIv;
+var gDecoded;
 
 /**
  * This is an async function that should return the username and password to send
@@ -133,9 +135,9 @@ function login(userInput, passInput) {
   
   gMasterPassword = password;
   gUsername = username;
-  //generateKey().then(function(value) {
-  //  gKey = value;
-  //console.log(gKey);
+  generateKey().then(function(value) {
+    gKey = value;
+    console.log(gKey);
   credentials(username, password).then(function(idJson) {
       if (idJson == 0) {
         return;
@@ -182,7 +184,7 @@ function login(userInput, passInput) {
         });
       });
     });
-  //});  
+  });  
 }
 
 function validateEmail(mail) {
@@ -236,9 +238,9 @@ function signup(userInput, passInput, passInput2, emailInput) {
 }
 
 function generateKey() {
-  return crypto.subtle.generateKey(
+  return window.crypto.subtle.generateKey(
     {
-      name: 'AES-GCM',
+      name: 'AES-CBC',
       length: 256
     },
     true,
@@ -251,13 +253,14 @@ Uint8Array iv
 String data
 */
 function encryptMessage(key, iv, data) {
+
   return crypto.subtle.encrypt(
     {
       name: "AES-CBC",
       iv
     },
     key,
-    data
+    strToArrayBuffer(data)
   );
 }
 
@@ -273,25 +276,30 @@ function save(siteInput, userInput, passInput) {
   encrypted = sitepasswd;
 
   // send the data, along with the encrypted password, to the server
-  var iv = crypto.getRandomValues(new Uint8Array(16));
-  //encryptMessage(gKey, iv, sitepasswd).then(function(value) {
-    //encrypted = bufferToHexString(value);
-    serverRequest("save", {
-      "site":site,
-      "siteuser":siteuser,
-      "sitepasswd":encrypted,
-      "iv":bufferToHexString(iv)
-    }).then(function(result) {
-      if (result.response.ok) {
-        // any work after a successful save should be done here
+  var iv = window.crypto.getRandomValues(new Uint8Array(16));
+  var data = strToArrayBuffer(sitepasswd);
+  window.crypto.subtle.encrypt(
+      {name: "AES-CBC", iv: iv}, gKey, data)
+  .then(function(value) {
+      //returns an ArrayBuffer containing the encrypted data
+      console.log(new Uint8Array(value));
+      encrypted = bufferToHexString(value);
+      serverRequest("save", {
+        "site":site,
+        "siteuser":siteuser,
+        "sitepasswd":encrypted,
+        "iv":bufferToHexString(iv)})
+  .then(function(result) {
+    if (result.response.ok) {
+      // any work after a successful save should be done here
 
-        // update the sites list
-        sites("save");
-      }
-      // show any server status messages
-      serverStatus(result);
-    });
-  //});
+      // update the sites list
+      sites("save");
+    }
+    // show any server status messages
+    serverStatus(result);
+  });
+  });
 }
 
 /**
@@ -310,9 +318,12 @@ function loadSite(siteName, siteElement, userElement, passElement) {
       // do any work that needs to be done on success
       var siteuser = result.json.siteuser
       var sitepassword = result.json.sitepasswd
+      console.log(result.json.siteiv);
+      gSiteIv = hexStringToUint8Array(result.json.siteiv);
       siteElement.value=siteName;
       userElement.value=siteuser;
       passElement.value=sitepassword;
+      gDecoded = false;
     } else {
       // on failure, show the login page and display any server status
       showContent("login");
@@ -325,12 +336,15 @@ function loadSite(siteName, siteElement, userElement, passElement) {
  * Called when the decrypt password button is pressed.
  */
 function load(siteInput, userInput, passInput) {
-  // you will need to entirely populate this function
-  console.log(siteInput);
-  console.log(userInput);
-  console.log(passInput);
-  // TODO: decode this guy.
-  password_cipher = passInput.value;
+  if (!gDecoded) {
+    var data = hexStringToUint8Array(passInput.value);
+    window.crypto.subtle.decrypt({name: "AES-CBC", iv: gSiteIv}, gKey, data)
+    .then(function(value) {
+      var plaintext = arrayBufferToString(value);
+      passInput.value = plaintext;
+      gDecoded = true;
+    });
+  }
 }
 
 /**

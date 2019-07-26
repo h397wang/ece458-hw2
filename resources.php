@@ -450,17 +450,18 @@ function load(&$request, &$response, &$db) {
   $site = $request->param("site");
   $username = $request->param("username");
   try {
-    $sql = "SELECT siteuser, sitepasswd FROM user_safe WHERE username='$username' AND site='$site'";
+    $sql = "SELECT siteuser, sitepasswd, siteiv FROM user_safe WHERE username='$username' AND site='$site'";
     $sth = $db->prepare($sql);
     $sth->execute();
     $result = $sth->fetch();
+    log_to_console("$sql");
     if (!is_array($result)) {
       log_to_console("Could not find sitepasswd for $username, $site");
       goto no_site;
     }
     $sitepasswd = $result["sitepasswd"];
     $siteuser = $result["siteuser"];
-    log_to_console("Query Success: $sql");
+    $siteiv = $result["siteiv"];
   } catch (Exception $ex) {
     log_to_console($ex->getmessage());
     goto fail;
@@ -469,6 +470,7 @@ function load(&$request, &$response, &$db) {
   $response->set_data("site", $site);
   $response->set_data("siteuser", $siteuser);
   $response->set_data("sitepasswd", $sitepasswd);
+  $response->set_data("siteiv", $siteiv);
   $response->set_http_code(200); // OK
   $response->success("Site data retrieved.");
   log_to_console("Site data retrieved.");

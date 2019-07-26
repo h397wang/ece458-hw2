@@ -70,6 +70,19 @@ function status(message) {
   }
 }
 
+function strToArrayBuffer(str) {
+  var buf = new ArrayBuffer(str.length * 2);
+  var bufView = new Uint16Array(buf);
+  for (var i = 0, strLen = str.length; i < strLen; i++) {
+      bufView[i] = str.charCodeAt(i);
+    }
+  return buf;
+}
+
+function arrayBufferToString(buf) {
+  return String.fromCharCode.apply(null, new Uint16Array(buf));
+}
+  
 /**
  * This handles standard server status messages.
  * Use the function by passing in the parameter passed from the 
@@ -82,7 +95,6 @@ function serverStatus(response) {
     status(response.json["failure"]);
   }
 }
-
 
 /**
  * Takes a typed array (like a Uint8Array) or an ArrayBuffer and 
@@ -252,7 +264,6 @@ function sites(page) {
   serverRequest("sites", {}).then(function (result) {
     if (result.response.ok) {
       let sites = result.json.sites;
-      console.log(sites);
       // delete all but the first option
       let options = select.querySelectorAll("option");
       for (let i = 1; i < options.length; i++) {
