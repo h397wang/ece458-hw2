@@ -187,9 +187,9 @@ function login(userInput, passInput) {
   });  
 }
 
-function validateEmail(mail) {
+function validateEmail(email) {
   var reg = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/ 
-  if (reg.test(myForm.emailAddr.value)) {
+  if (reg.test(email.value)) {
     return (true)
   }
   return (false)
@@ -205,17 +205,19 @@ function signup(userInput, passInput, passInput2, emailInput) {
       password2 = passInput2.value,
       email     = emailInput.value;
 
-  // TODO: check that both passwords match?
   if (password !== password2) {
+    status("Passwords do not match.");
+    console.log("Passwords do not match")
     return false;
   }
 
-  // do any preprocessing on the user input here before sending to the server
-  // I'm not sure if this is working
-  //if (validateEmail(email) === false) {
-  //  status("Invalid email");
-  //  return;
-  //}
+/* Submit this last
+  if (validateEmail(email) === false) {
+    status("Invalid email");
+    console.log("Invalid email")
+    return false;
+  }
+*/
 
   crypto.subtle.digest("SHA-256", utf8ToUint8Array(password)).then(function(hash_password_byte) {
     var hash_password_hexstr = bufferToHexString(hash_password_byte);
@@ -352,7 +354,7 @@ function load(siteInput, userInput, passInput) {
  */
 function logout() {
   // do any preprocessing needed
-
+  
   // tell the server to log out
   serverRequest("logout", {}).then(function(result) {
     if (result.response.ok) {

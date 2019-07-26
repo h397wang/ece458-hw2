@@ -264,7 +264,6 @@ function login(&$request, &$response, &$db) {
     log_to_console("Query Success: $sql");
   } catch (Exception $ex) {
     log_to_console($ex->getmessage());
-    // TODO: return failed response
     return false;
   }
 
@@ -278,7 +277,6 @@ function login(&$request, &$response, &$db) {
     log_to_console("Query Success: $sql");
   } catch (Exception $ex) {
     log_to_console($ex->getmessage());
-    // TODO: return failed response
     return false;
   } 
 
@@ -300,7 +298,7 @@ function login(&$request, &$response, &$db) {
       $result = $sth->fetch();
       $sessionid =  bin2hex(random_bytes(8));
       $now = new DateTime('NOW');
-      $interval = new DateInterval("PT2M");
+      $interval = new DateInterval("PT10M");
       $expire = $now->add($interval)->format(DateTime::ATOM);
       if (!is_array($result)) { // No sessionid for this user
         $sql = "INSERT INTO user_session (sessionid, username, expires) VALUES ('$sessionid', '$username', '$expires')";
@@ -317,7 +315,10 @@ function login(&$request, &$response, &$db) {
       log_to_console($ex->getmessage());
       goto fail;
     }
-    // TODO: session_start();
+    
+    session_start();
+    session_id($sessionid);
+
     // $_SESSION["favcolor"] = "green";
     $response->set_cookie("sessionid", $sessionid);
     log_to_console("Session created: $sessionid");
@@ -359,8 +360,8 @@ function sites(&$request, &$response, &$db) {
     $now = new DateTime('NOW');
     $now = $now->format(DateTime::ATOM);
     if ($expires < $now) {
-      //log_to_console("Session expired");
-      //goto fail;
+      log_to_console("Session expired");
+      goto fail;
     }
 
     // Query sites saved by this user
@@ -414,6 +415,13 @@ function save(&$request, &$response, &$db) {
     }
     log_to_console("Query Success: $sql");
     $username = $result["username"];
+    $expires = $result["expires"];
+    $now = new DateTime('NOW');
+    $now = $now->format(DateTime::ATOM);
+    if ($expires < $now) {
+      log_to_console("Session expired");
+      goto fail;
+    }
   }  catch (Exception $ex) {
     log_to_console($ex->getmessage());
     goto fail;
@@ -457,6 +465,7 @@ function save(&$request, &$response, &$db) {
   $response->success("Save to safe succeeded.");
   log_to_console("Successfully saved site data");
   return true;
+
 fail:
   $response->set_http_code(401);
   $response->failure("Save to safe failed.");
@@ -472,6 +481,31 @@ fail:
 function load(&$request, &$response, &$db) {
   $site = $request->param("site");
   $username = $request->param("username");
+
+  // Check the session
+  $sessionid = $request->cookie("sessionid");
+  try {
+    $sql = "SELECT expires FROM user_session WHERE sessionid='$sessionid'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $result = $sth->fetch();
+    if (!is_array($result)) {
+      log_to_console("No sessionid");
+      goto bad_session;
+    }
+    log_to_console("Query Success: $sql");
+    $expires = $result["expires"];
+    $now = new DateTime('NOW');
+    $now = $now->format(DateTime::ATOM);
+    if ($expires < $now) {
+      log_to_console("Session expired");
+      goto bad_session;
+    }
+  }  catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    goto bad_session;
+  }
+
   try {
     $sql = "SELECT siteuser, sitepasswd, siteiv FROM user_safe WHERE username='$username' AND site='$site'";
     $sth = $db->prepare($sql);
@@ -487,7 +521,7 @@ function load(&$request, &$response, &$db) {
     $siteiv = $result["siteiv"];
   } catch (Exception $ex) {
     log_to_console($ex->getmessage());
-    goto fail;
+    goto no_site;
   }
   
   $response->set_data("site", $site);
@@ -499,7 +533,12 @@ function load(&$request, &$response, &$db) {
   log_to_console("Site data retrieved.");
   return true;
 
-fail:
+bad_session:
+  $response->set_http_code(401);
+  $response->success("Session Invalid.");
+  log_to_console("Session Invalid.");
+  return false;
+
 no_site:
   $response->set_http_code(404);
   $response->success("Site data could not be retrieved.");
@@ -512,6 +551,7 @@ no_site:
  * Delete the associated session if one exists.
  */
 function logout(&$request, &$response, &$db) {
+  session_destroy();
   $response->set_http_code(200);
   $response->success("Successfully logged out.");
   log_to_console("Logged out");
