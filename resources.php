@@ -498,6 +498,8 @@ function load(&$request, &$response, &$db) {
     $now = new DateTime('NOW');
     $now = $now->format(DateTime::ATOM);
     if ($expires < $now) {
+      log_to_console($expires);
+      log_to_console($now);
       log_to_console("Session expired");
       goto bad_session;
     }
@@ -551,11 +553,11 @@ no_site:
  * Delete the associated session if one exists.
  */
 function logout(&$request, &$response, &$db) {
-  session_destroy();
+  // Doesn't logout properly for client???
+  //session_destroy();
   $response->set_http_code(200);
   $response->success("Successfully logged out.");
   log_to_console("Logged out");
-
   return true;
 }
 ?>

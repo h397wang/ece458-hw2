@@ -211,13 +211,11 @@ function signup(userInput, passInput, passInput2, emailInput) {
     return false;
   }
 
-/* Submit this last
   if (validateEmail(email) === false) {
     status("Invalid email");
     console.log("Invalid email")
-    return false;
+    //return false;
   }
-*/
 
   crypto.subtle.digest("SHA-256", utf8ToUint8Array(password)).then(function(hash_password_byte) {
     var hash_password_hexstr = bufferToHexString(hash_password_byte);
@@ -240,13 +238,15 @@ function signup(userInput, passInput, passInput2, emailInput) {
 }
 
 function generateKey() {
-  return window.crypto.subtle.generateKey(
-    {
-      name: 'AES-CBC',
-      length: 256
-    },
-    true,
-    ["encrypt", "decrypt"]);
+  var data = new Uint8Array(16);
+  data.set(utf8ToUint8Array(gMasterPassword));
+  return window.crypto.subtle.importKey(
+    "raw", //can be "jwk" or "raw"
+    data,
+    {name: "AES-CBC"},
+    false, //whether the key is extractable (i.e. can be used in exportKey)
+    ["encrypt", "decrypt"]
+  );
 }
 
 /*
@@ -284,7 +284,6 @@ function save(siteInput, userInput, passInput) {
       {name: "AES-CBC", iv: iv}, gKey, data)
   .then(function(value) {
       //returns an ArrayBuffer containing the encrypted data
-      console.log(new Uint8Array(value));
       encrypted = bufferToHexString(value);
       serverRequest("save", {
         "site":site,
@@ -354,7 +353,7 @@ function load(siteInput, userInput, passInput) {
  */
 function logout() {
   // do any preprocessing needed
-  
+
   // tell the server to log out
   serverRequest("logout", {}).then(function(result) {
     if (result.response.ok) {
