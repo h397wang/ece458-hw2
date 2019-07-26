@@ -214,7 +214,7 @@ function signup(userInput, passInput, passInput2, emailInput) {
   if (validateEmail(email) === false) {
     status("Invalid email");
     console.log("Invalid email")
-    //return false;
+    return false;
   }
 
   crypto.subtle.digest("SHA-256", utf8ToUint8Array(password)).then(function(hash_password_byte) {

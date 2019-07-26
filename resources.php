@@ -299,14 +299,14 @@ function login(&$request, &$response, &$db) {
       $sessionid =  bin2hex(random_bytes(8));
       $now = new DateTime('NOW');
       $interval = new DateInterval("PT10M");
-      $expire = $now->add($interval)->format(DateTime::ATOM);
+      $expires = $now->add($interval)->format(DateTime::ATOM);
       if (!is_array($result)) { // No sessionid for this user
         $sql = "INSERT INTO user_session (sessionid, username, expires) VALUES ('$sessionid', '$username', '$expires')";
         $sth = $db->prepare($sql);
         $sth->execute();
         log_to_console("Query Success: $sql");
       } else { // sessionid exists for this user..? so refresh or what?
-        $sql = "UPDATE user_session SET sessionid='$sessionid', expires='$expire' WHERE username='$username'";
+        $sql = "UPDATE user_session SET sessionid='$sessionid', expires='$expires' WHERE username='$username'";
         $sth = $db->prepare($sql);
         $sth->execute();
         log_to_console("Query Success: $sql");
@@ -360,6 +360,8 @@ function sites(&$request, &$response, &$db) {
     $now = new DateTime('NOW');
     $now = $now->format(DateTime::ATOM);
     if ($expires < $now) {
+      log_to_console($expires);
+      log_to_console($now);
       log_to_console("Session expired");
       goto fail;
     }
