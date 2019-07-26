@@ -84,6 +84,8 @@
  *****************************************************************************/
 
 var gMasterPassword;
+var gKey;
+var gUsername;
 
 /**
  * This is an async function that should return the username and password to send
@@ -130,53 +132,57 @@ function login(userInput, passInput) {
       password = passInput.value;
   
   gMasterPassword = password;
-
+  gUsername = username;
+  //generateKey().then(function(value) {
+  //  gKey = value;
+  //console.log(gKey);
   credentials(username, password).then(function(idJson) {
-    if (idJson == 0) {
-      return;
-    }
-    // do any needed work with the credentials
-    console.log(idJson);
-    var challenge_hexstr = idJson.challenge;
-    var salt_hexstr = idJson.salt;
+      if (idJson == 0) {
+        return;
+      }
+      // do any needed work with the credentials
+      console.log(idJson);
+      var challenge_hexstr = idJson.challenge;
+      var salt_hexstr = idJson.salt;
 
-    var salt_byte = hexStringToUint8Array(salt_hexstr);
-    var challenge_byte = hexStringToUint8Array(challenge_hexstr);
-    var password_byte = utf8ToUint8Array(password)
+      var salt_byte = hexStringToUint8Array(salt_hexstr);
+      var challenge_byte = hexStringToUint8Array(challenge_hexstr);
+      var password_byte = utf8ToUint8Array(password)
 
-    // hash password, don't send to server in plaintext
-    crypto.subtle.digest("SHA-256", utf8ToUint8Array(password)).then(function(hash_password_byte) {
-      var password_hexstr = bufferToHexString(hash_password_byte);
-      var pw_salt_hexstr = password_hexstr.concat(salt_hexstr);
-      var pw_salt_byte = hexStringToUint8Array(pw_salt_hexstr);
+      // hash password, don't send to server in plaintext
+      crypto.subtle.digest("SHA-256", utf8ToUint8Array(password)).then(function(hash_password_byte) {
+        var password_hexstr = bufferToHexString(hash_password_byte);
+        var pw_salt_hexstr = password_hexstr.concat(salt_hexstr);
+        var pw_salt_byte = hexStringToUint8Array(pw_salt_hexstr);
 
-      console.log(salt_hexstr);
-      console.log(challenge_hexstr);
-      console.log(password_hexstr);
-      console.log(pw_salt_hexstr);
+        console.log(salt_hexstr);
+        console.log(challenge_hexstr);
+        console.log(password_hexstr);
+        console.log(pw_salt_hexstr);
 
-      // compute challenge response
-      crypto.subtle.digest("SHA-256", pw_salt_byte).then(function(hash_pw_salt_byte) {
-        var hash_pw_salt_hexstr = bufferToHexString(hash_pw_salt_byte);
-        var resp_prehash_hexstr = hash_pw_salt_hexstr.concat(challenge_hexstr);
-        crypto.subtle.digest("SHA-256", hexStringToUint8Array(resp_prehash_hexstr)).then(function(resp_byte) {
-          var resp_hexstr = bufferToHexString(resp_byte);
-          // Send a login request to the server.
-          serverRequest("login", // resource to call
-                        {"username":username, "password":resp_hexstr} // this should be populated with needed parameters
-          ).then(function(result) {
-            // If the login was successful, show the dashboard.
-            if (result.response.ok) {
-              showContent("dashboard");
-            } else {
-              // If the login failed, show the login page with an error message.
-              serverStatus(result);
-            }
+        // compute challenge response
+        crypto.subtle.digest("SHA-256", pw_salt_byte).then(function(hash_pw_salt_byte) {
+          var hash_pw_salt_hexstr = bufferToHexString(hash_pw_salt_byte);
+          var resp_prehash_hexstr = hash_pw_salt_hexstr.concat(challenge_hexstr);
+          crypto.subtle.digest("SHA-256", hexStringToUint8Array(resp_prehash_hexstr)).then(function(resp_byte) {
+            var resp_hexstr = bufferToHexString(resp_byte);
+            // Send a login request to the server.
+            serverRequest("login", // resource to call
+                          {"username":username, "password":resp_hexstr} // this should be populated with needed parameters
+            ).then(function(result) {
+              // If the login was successful, show the dashboard.
+              if (result.response.ok) {
+                showContent("dashboard");
+              } else {
+                // If the login failed, show the login page with an error message.
+                serverStatus(result);
+              }
+            });
           });
         });
       });
     });
-  });
+  //});  
 }
 
 function validateEmail(mail) {
@@ -229,6 +235,31 @@ function signup(userInput, passInput, passInput2, emailInput) {
   });
 }
 
+function generateKey() {
+  return crypto.subtle.generateKey(
+    {
+      name: 'AES-GCM',
+      length: 256
+    },
+    true,
+    ["encrypt", "decrypt"]);
+}
+
+/*
+CyrptoKey key
+Uint8Array iv
+String data
+*/
+function encryptMessage(key, iv, data) {
+  return crypto.subtle.encrypt(
+    {
+      name: "AES-CBC",
+      iv
+    },
+    key,
+    data
+  );
+}
 
 /**
  * Called when the add password form is submitted.
@@ -240,18 +271,27 @@ function save(siteInput, userInput, passInput) {
       encrypted; // this will need to be populated
   
   encrypted = sitepasswd;
-  // send the data, along with the encrypted password, to the server
-  serverRequest("save", {"site":site, "siteuser":siteuser, "sitepasswd":encrypted}
-  ).then(function(result) {
-    if (result.response.ok) {
-      // any work after a successful save should be done here
 
-      // update the sites list
-      sites("save");
-    }
-    // show any server status messages
-    serverStatus(result);
-  });
+  // send the data, along with the encrypted password, to the server
+  var iv = crypto.getRandomValues(new Uint8Array(16));
+  //encryptMessage(gKey, iv, sitepasswd).then(function(value) {
+    //encrypted = bufferToHexString(value);
+    serverRequest("save", {
+      "site":site,
+      "siteuser":siteuser,
+      "sitepasswd":encrypted,
+      "iv":bufferToHexString(iv)
+    }).then(function(result) {
+      if (result.response.ok) {
+        // any work after a successful save should be done here
+
+        // update the sites list
+        sites("save");
+      }
+      // show any server status messages
+      serverStatus(result);
+    });
+  //});
 }
 
 /**
@@ -264,12 +304,15 @@ function save(siteInput, userInput, passInput) {
 function loadSite(siteName, siteElement, userElement, passElement) {
   // do any preprocessing here
 
-  serverRequest("load", // the resource to call
-                {"site":siteName, "username":username}
-  ).then(function(result) {
+  serverRequest("load", {"site":siteName, "username":gUsername})
+  .then(function(result) {
     if (result.response.ok) {
       // do any work that needs to be done on success
-      console.log(result);
+      var siteuser = result.json.siteuser
+      var sitepassword = result.json.sitepasswd
+      siteElement.value=siteName;
+      userElement.value=siteuser;
+      passElement.value=sitepassword;
     } else {
       // on failure, show the login page and display any server status
       showContent("login");
@@ -283,6 +326,11 @@ function loadSite(siteName, siteElement, userElement, passElement) {
  */
 function load(siteInput, userInput, passInput) {
   // you will need to entirely populate this function
+  console.log(siteInput);
+  console.log(userInput);
+  console.log(passInput);
+  // TODO: decode this guy.
+  password_cipher = passInput.value;
 }
 
 /**

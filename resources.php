@@ -154,8 +154,7 @@ function signup(&$request, &$response, &$db) {
     log_to_console("Records added successfully.");
   } catch (Exception $ex) {
     log_to_console($ex->getmessage());
-    log_to_console("ERROR: Could not execute query, has the db been initialized?");
-    return false;
+    goto fail;
   }
 
   // store hash of password || salt
@@ -167,8 +166,7 @@ function signup(&$request, &$response, &$db) {
     log_to_console("Query Success: $sql");
   } catch (Exception $ex) {
     log_to_console($ex->getmessage());
-    log_to_console("ERROR: Could not execute query, has the db been initialized?");
-    return false;
+    goto fail;
   }
 
   // Respond with a message of success.
@@ -177,6 +175,12 @@ function signup(&$request, &$response, &$db) {
   log_to_console("Account created.");
 
   return true;
+
+fail:
+  $response->set_http_code(401);
+  $response->failure("Could not create account.");
+  log_to_console("Could not create account.");
+  return false;
 }
 
 
@@ -355,7 +359,8 @@ function sites(&$request, &$response, &$db) {
     $now = new DateTime('NOW');
     $now = $now->format(DateTime::ATOM);
     if ($expires < $now) {
-      goto fail;
+      //log_to_console("Session expired");
+      //goto fail;
     }
 
     // Query sites saved by this user
@@ -365,7 +370,7 @@ function sites(&$request, &$response, &$db) {
     $results = $sth->fetchAll(PDO::FETCH_COLUMN, 0);
     log_to_console("Query Success: $sql");
     if (!is_array($result)) {
-      goto fail;
+      log_to_console("No sites saved by this user");
     }
 
   } catch (Exception $ex) {
@@ -394,8 +399,26 @@ function save(&$request, &$response, &$db) {
   $site       = $request->param("site");
   $siteuser   = $request->param("siteuser");
   $sitepasswd = $request->param("sitepasswd");
+  $siteiv     = $request->param("iv");
 
-  $siteiv = "";
+  // query user_session for
+  $sessionid = $request->cookie("sessionid");
+  try {
+    $sql = "SELECT username, expires FROM user_session WHERE sessionid='$sessionid'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $result = $sth->fetch();
+    if (!is_array($result)) {
+      log_to_console("Empty query");
+      goto fail;
+    }
+    log_to_console("Query Success: $sql");
+    $username = $result["username"];
+  }  catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    goto fail;
+  }
+
   $now = new DateTime('NOW');
   $modified = $now->format(DateTime::ATOM);
   try {
@@ -427,7 +450,7 @@ function load(&$request, &$response, &$db) {
   $site = $request->param("site");
   $username = $request->param("username");
   try {
-    $sql = "SELECT siteuser, sitepasswd, FROM user_safe WHERE username='$username' and site='$site'";
+    $sql = "SELECT siteuser, sitepasswd FROM user_safe WHERE username='$username' AND site='$site'";
     $sth = $db->prepare($sql);
     $sth->execute();
     $result = $sth->fetch();
