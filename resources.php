@@ -421,15 +421,38 @@ function save(&$request, &$response, &$db) {
 
   $now = new DateTime('NOW');
   $modified = $now->format(DateTime::ATOM);
+  // Check if an entry of user, site already exists in user_safe
   try {
-    $sql = "INSERT INTO user_safe (username, site, siteuser, sitepasswd, siteiv, modified) VALUES ('$username', '$site', '$siteuser', '$sitepasswd', '$siteiv', '$modified')";
+    $sql = "SELECT * from user_safe WHERE username='$username' AND site='$site'";
+    $sth = $db->prepare($sql);
+    $sth->execute();
+    $result = $sth->fetch();
+  }  catch (Exception $ex) {
+    log_to_console($ex->getmessage());
+    goto fail;
+  }
+  if (is_array($result)) {
+    try {
+      $sql = "UPDATE user_safe SET siteuser='$siteuser', sitepasswd='$sitepasswd', siteiv='$siteiv', modified='$modified' WHERE username='$username' AND site='$site'";
       $sth = $db->prepare($sql);
       $sth->execute();
       log_to_console("Query Success: $sql");
-  } catch (Exception $ex) {
+    } catch (Exception $ex) {
       log_to_console($ex->getmessage());
       goto fail;
+    }
+  } else {
+    try {
+      $sql = "INSERT INTO user_safe (username, site, siteuser, sitepasswd, siteiv, modified) VALUES ('$username', '$site', '$siteuser', '$sitepasswd', '$siteiv', '$modified')";
+      $sth = $db->prepare($sql);
+      $sth->execute();
+      log_to_console("Query Success: $sql");
+    } catch (Exception $ex) {
+      log_to_console($ex->getmessage());
+      goto fail;
+    }
   }
+
   $response->set_http_code(200); // OK
   $response->success("Save to safe succeeded.");
   log_to_console("Successfully saved site data");
